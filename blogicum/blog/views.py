@@ -1,50 +1,44 @@
-from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
-from .models import Post, Category
+
+from .models import Category, Post
+from .constants import POSTS_PER_PAGE, POST_ORDERING  # Импорт констант
 
 
-def index(request):
-    post_list = Post.objects.filter(
+def get_published_posts():
+    """Возвращает QuerySet опубликованных постов с оптимизированными запросами."""
+    return Post.objects.select_related('category', 'author', 'location').filter(
         pub_date__lte=timezone.now(),
         is_published=True,
         category__is_published=True
-    ).order_by('-pub_date')[:5]  # Переименовано в post_list
+    ).order_by(POST_ORDERING)  # Используем константу
 
-    # Исправлено имя переменной
+
+def index(request):
+    post_list = get_published_posts()[:POSTS_PER_PAGE]  # Используем константу
     return render(request, 'blog/index.html', {'post_list': post_list})
 
 
 def post_detail(request, id):
-    try:
-        post = Post.objects.get(
-            id=id,
-            pub_date__lte=timezone.now(),
-            is_published=True,
-            category__is_published=True
-        )
-    except Post.DoesNotExist:
-        raise Http404(f"Пост с id={id} не найден или недоступен.")
-
+    post = get_object_or_404(
+        get_published_posts(),
+        id=id
+    )
     return render(request, 'blog/detail.html', {'post': post})
 
 
 def category_posts(request, category_slug):
-    try:
-        category = Category.objects.get(
-            slug=category_slug,
-            is_published=True
-        )
-    except Category.DoesNotExist:
-        raise Http404(f"Категория {category_slug} не найдена или недоступна.")
-
-    post_list = Post.objects.filter(
-        category=category,
-        pub_date__lte=timezone.now(),
+    category = get_object_or_404(
+        Category,
+        slug=category_slug,
         is_published=True
-    ).order_by('-pub_date')
+    )
+
+    post_list = get_published_posts().filter(
+        category=category
+    )
 
     return render(request, 'blog/category.html', {
         'category': category,
-        'post_list': post_list  # Также исправлено для единообразия
+        'post_list': post_list
     })
